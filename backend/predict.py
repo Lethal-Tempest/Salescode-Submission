@@ -40,6 +40,8 @@ def main():
     # Load ResNet101 model weights
     resnet_model_path = Path(__file__).resolve().parent / 'final_model.pth'
     if not resnet_model_path.exists():
+        resnet_model_path = Path(__file__).resolve().parent.parent / 'final_model.pth'
+    if not resnet_model_path.exists():
         resnet_model_path = Path(__file__).resolve().parent / 'model' / 'final_model.pth'
     if not resnet_model_path.exists():
         print(f"Error: Model weights not found at: {resnet_model_path}")

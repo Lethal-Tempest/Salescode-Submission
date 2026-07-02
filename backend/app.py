@@ -3,7 +3,8 @@ import sys
 import base64
 import io
 from pathlib import Path
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 from PIL import Image
 
 import torch
@@ -11,6 +12,7 @@ import torchvision
 from torchvision import transforms
 
 app = Flask(__name__)
+CORS(app) # Enable CORS for frontend domain requests
 
 # Device initialization with robust Blackwell architecture test
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -26,8 +28,10 @@ if device.type == 'cuda':
         device = torch.device('cpu')
         device_name = "CPU (CUDA Incompatible)"
 
-# Load ResNet101 model globally on startup
+# Load ResNet101 model globally on startup (search backend/ or parent/ or model/)
 resnet_model_path = Path(__file__).resolve().parent / 'final_model.pth'
+if not resnet_model_path.exists():
+    resnet_model_path = Path(__file__).resolve().parent.parent / 'final_model.pth'
 if not resnet_model_path.exists():
     resnet_model_path = Path(__file__).resolve().parent / 'model' / 'final_model.pth'
 if not resnet_model_path.exists():
@@ -50,7 +54,7 @@ resnet_transforms = transforms.Compose([
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return "SalesCode Moire Recapture Detection API is running!"
 
 @app.route('/predict', methods=['POST'])
 def predict():
