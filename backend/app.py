@@ -30,21 +30,7 @@ output_name = session.get_outputs()[0].name
 
 # ResNet preprocessing implemented in NumPy/Pillow
 def preprocess_image(pil_img):
-    w, h = pil_img.size
-    if w < h:
-        new_w = 256
-        new_h = int(h * (256 / w))
-    else:
-        new_h = 256
-        new_w = int(w * (256 / h))
-    pil_img = pil_img.resize((new_w, new_h), Image.Resampling.BILINEAR)
-    
-    left = (new_w - 224) // 2
-    top = (new_h - 224) // 2
-    right = left + 224
-    bottom = top + 224
-    pil_img = pil_img.crop((left, top, right, bottom))
-    
+    pil_img = pil_img.resize((224, 224), Image.Resampling.BILINEAR)
     img_np = np.array(pil_img).astype(np.float32) / 255.0
     mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
     std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
@@ -85,8 +71,8 @@ def predict():
         probs = e_x / e_x.sum(axis=1, keepdims=True)
         probs = probs[0]
         
-        # Class 2 is Screen Recapture (Spoof)
-        prob = float(probs[2])
+        # Class 1 is Screen Recapture (Spoof)
+        prob = float(probs[1])
         
         return jsonify({
             'probability': float(prob),

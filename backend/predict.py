@@ -49,22 +49,8 @@ def main():
         img = Image.open(image_path).convert('RGB')
         
         # Preprocessing matching PyTorch transforms
-        w, h = img.size
-        if w < h:
-            new_w = 256
-            new_h = int(h * (256 / w))
-        else:
-            new_h = 256
-            new_w = int(w * (256 / h))
-        img_resized = img.resize((new_w, new_h), Image.Resampling.BILINEAR)
-        
-        left = (new_w - 224) // 2
-        top = (new_h - 224) // 2
-        right = left + 224
-        bottom = top + 224
-        img_cropped = img_resized.crop((left, top, right, bottom))
-        
-        img_np = np.array(img_cropped).astype(np.float32) / 255.0
+        img_resized = img.resize((224, 224), Image.Resampling.BILINEAR)
+        img_np = np.array(img_resized).astype(np.float32) / 255.0
         mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
         std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
         img_np = (img_np - mean) / std
@@ -79,8 +65,8 @@ def main():
         probs = e_x / e_x.sum(axis=1, keepdims=True)
         probs = probs[0]
         
-        # Class 2 is Screen Recapture (Spoof)
-        prob = float(probs[2])
+        # Class 1 is Screen Recapture (Spoof)
+        prob = float(probs[1])
         print(f"{prob:.2f}")
     except Exception as e:
         print(f"Error running inference: {e}")
