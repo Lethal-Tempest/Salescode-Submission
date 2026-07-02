@@ -7,50 +7,52 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from PIL import Image
 
-import torch
-import torchvision
-from torchvision import transforms
+import numpy as np
+import onnxruntime as ort
 
 app = Flask(__name__)
 CORS(app) # Enable CORS for frontend domain requests
 
-# Device initialization with robust Blackwell architecture test
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-device_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU"
+# Load ONNX ResNet101 model globally on startup (search backend/ or parent/ or model/)
+onnx_model_path = Path(__file__).resolve().parent / 'final_model.onnx'
+if not onnx_model_path.exists():
+    onnx_model_path = Path(__file__).resolve().parent.parent / 'final_model.onnx'
+if not onnx_model_path.exists():
+    onnx_model_path = Path(__file__).resolve().parent / 'model' / 'final_model.onnx'
+if not onnx_model_path.exists():
+    raise RuntimeError(f"ONNX model weights not found at: {onnx_model_path}")
+print(f"Loading ONNX ResNet101 model from: {onnx_model_path}")
 
-if device.type == 'cuda':
-    try:
-        # Force kernel execution to check sm_120 compatibility
-        (torch.zeros(1).to(device) + 1).cpu()
-        print(f"PyTorch using device: {device} ({device_name})")
-    except Exception as e:
-        print(f"CUDA initialization failed ({e}). Falling back to CPU.")
-        device = torch.device('cpu')
-        device_name = "CPU (CUDA Incompatible)"
+# Initialize ONNX inference session on CPU for minimal memory footprint
+session = ort.InferenceSession(str(onnx_model_path), providers=['CPUExecutionProvider'])
+input_name = session.get_inputs()[0].name
+output_name = session.get_outputs()[0].name
 
-# Load ResNet101 model globally on startup (search backend/ or parent/ or model/)
-resnet_model_path = Path(__file__).resolve().parent / 'final_model.pth'
-if not resnet_model_path.exists():
-    resnet_model_path = Path(__file__).resolve().parent.parent / 'final_model.pth'
-if not resnet_model_path.exists():
-    resnet_model_path = Path(__file__).resolve().parent / 'model' / 'final_model.pth'
-if not resnet_model_path.exists():
-    raise RuntimeError(f"ResNet101 model weights not found at: {resnet_model_path}")
-print(f"Loading ResNet101 model from: {resnet_model_path}")
-
-resnet_model = torchvision.models.resnet101()
-resnet_model.fc = torch.nn.Linear(2048, 3)
-resnet_model.load_state_dict(torch.load(str(resnet_model_path), map_location=device))
-resnet_model.to(device)
-resnet_model.eval()
-
-# ResNet preprocessing transforms
-resnet_transforms = transforms.Compose([
-    transforms.Resize(256),
-    transforms.CenterCrop(224),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-])
+# ResNet preprocessing implemented in NumPy/Pillow
+def preprocess_image(pil_img):
+    w, h = pil_img.size
+    if w < h:
+        new_w = 256
+        new_h = int(h * (256 / w))
+    else:
+        new_h = 256
+        new_w = int(w * (256 / h))
+    pil_img = pil_img.resize((new_w, new_h), Image.Resampling.BILINEAR)
+    
+    left = (new_w - 224) // 2
+    top = (new_h - 224) // 2
+    right = left + 224
+    bottom = top + 224
+    pil_img = pil_img.crop((left, top, right, bottom))
+    
+    img_np = np.array(pil_img).astype(np.float32) / 255.0
+    mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+    std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+    img_np = (img_np - mean) / std
+    
+    img_onnx = img_np.transpose((2, 0, 1))
+    img_onnx = np.expand_dims(img_onnx, axis=0)
+    return img_onnx
 
 @app.route('/')
 def index():
@@ -74,19 +76,21 @@ def predict():
         
         # Load image as PIL
         pil_image = Image.open(image_file).convert('RGB')
-        tensor = resnet_transforms(pil_image).unsqueeze(0).to(device)
+        img_onnx = preprocess_image(pil_image)
         
-        with torch.no_grad():
-            logits = resnet_model(tensor)
-            probs = torch.softmax(logits, dim=1).cpu().numpy()[0]
-            
+        logits = session.run([output_name], {input_name: img_onnx})[0]
+        
+        # Softmax function
+        e_x = np.exp(logits - np.max(logits, axis=1, keepdims=True))
+        probs = e_x / e_x.sum(axis=1, keepdims=True)
+        probs = probs[0]
+        
         # Class 2 is Screen Recapture (Spoof)
         prob = float(probs[2])
-        active_device = f"CUDA ({device_name})" if device.type == 'cuda' else "CPU"
         
         return jsonify({
             'probability': float(prob),
-            'device': active_device
+            'device': 'CPU (ONNX Runtime)'
         })
         
     except Exception as e:

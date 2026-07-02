@@ -1,5 +1,5 @@
-torch
-torchvision
+onnxruntime
+numpy
 Pillow
 flask
 flask-cors

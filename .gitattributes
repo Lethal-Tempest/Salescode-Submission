@@ -1,3 +1,5 @@
 *.joblib filter=lfs diff=lfs merge=lfs -text
 backend/final_model.pth filter=lfs diff=lfs merge=lfs -text
 *.pth filter=lfs diff=lfs merge=lfs -text
+*.onnx filter=lfs diff=lfs merge=lfs -text
+*.onnx.data filter=lfs diff=lfs merge=lfs -text
