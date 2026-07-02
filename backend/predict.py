@@ -27,7 +27,7 @@ def main():
         print("Error: onnxruntime, numpy, and Pillow are required to run this script.")
         sys.exit(1)
         
-    # Load ONNX ResNet101 model weights
+    # Load ONNX ResNet18 model weights
     onnx_model_path = Path(__file__).resolve().parent / 'final_model.onnx'
     if not onnx_model_path.exists():
         onnx_model_path = Path(__file__).resolve().parent.parent / 'final_model.onnx'

@@ -21,7 +21,7 @@ if not onnx_model_path.exists():
     onnx_model_path = Path(__file__).resolve().parent / 'model' / 'final_model.onnx'
 if not onnx_model_path.exists():
     raise RuntimeError(f"ONNX model weights not found at: {onnx_model_path}")
-print(f"Loading ONNX ResNet101 model from: {onnx_model_path}")
+print(f"Loading ONNX ResNet18 model from: {onnx_model_path}")
 
 # Initialize ONNX inference session on CPU for minimal memory footprint
 session = ort.InferenceSession(str(onnx_model_path), providers=['CPUExecutionProvider'])
