@@ -37,15 +37,17 @@ def main():
         except Exception:
             device = torch.device('cpu')
             
-    # Load ResNet18 model weights
-    resnet_model_path = Path(__file__).resolve().parent / 'model' / 'final_model.pth'
+    # Load ResNet101 model weights
+    resnet_model_path = Path(__file__).resolve().parent / 'final_model.pth'
+    if not resnet_model_path.exists():
+        resnet_model_path = Path(__file__).resolve().parent / 'model' / 'final_model.pth'
     if not resnet_model_path.exists():
         print(f"Error: Model weights not found at: {resnet_model_path}")
         sys.exit(1)
         
     try:
-        model = torchvision.models.resnet18()
-        model.fc = torch.nn.Linear(512, 2)
+        model = torchvision.models.resnet101()
+        model.fc = torch.nn.Linear(2048, 3)
         model.load_state_dict(torch.load(str(resnet_model_path), map_location=device))
         model.to(device)
         model.eval()
@@ -69,8 +71,8 @@ def main():
             logits = model(tensor)
             probs = torch.softmax(logits, dim=1).cpu().numpy()[0]
             
-        # Class 1 is Screen Recapture (Spoof)
-        prob = float(probs[1])
+        # Class 2 is Screen Recapture (Spoof)
+        prob = float(probs[2])
         print(f"{prob:.2f}")
     except Exception as e:
         print(f"Error running inference: {e}")

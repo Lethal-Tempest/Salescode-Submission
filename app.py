@@ -26,14 +26,16 @@ if device.type == 'cuda':
         device = torch.device('cpu')
         device_name = "CPU (CUDA Incompatible)"
 
-# Load ResNet18 model globally on startup
-resnet_model_path = Path(__file__).resolve().parent / 'model' / 'final_model.pth'
+# Load ResNet101 model globally on startup
+resnet_model_path = Path(__file__).resolve().parent / 'final_model.pth'
 if not resnet_model_path.exists():
-    raise RuntimeError(f"ResNet18 model weights not found at: {resnet_model_path}")
-print(f"Loading ResNet18 model from: {resnet_model_path}")
+    resnet_model_path = Path(__file__).resolve().parent / 'model' / 'final_model.pth'
+if not resnet_model_path.exists():
+    raise RuntimeError(f"ResNet101 model weights not found at: {resnet_model_path}")
+print(f"Loading ResNet101 model from: {resnet_model_path}")
 
-resnet_model = torchvision.models.resnet18()
-resnet_model.fc = torch.nn.Linear(512, 2)
+resnet_model = torchvision.models.resnet101()
+resnet_model.fc = torch.nn.Linear(2048, 3)
 resnet_model.load_state_dict(torch.load(str(resnet_model_path), map_location=device))
 resnet_model.to(device)
 resnet_model.eval()
@@ -74,8 +76,8 @@ def predict():
             logits = resnet_model(tensor)
             probs = torch.softmax(logits, dim=1).cpu().numpy()[0]
             
-        # Class 1 is Screen Recapture (Spoof)
-        prob = float(probs[1])
+        # Class 2 is Screen Recapture (Spoof)
+        prob = float(probs[2])
         active_device = f"CUDA ({device_name})" if device.type == 'cuda' else "CPU"
         
         return jsonify({

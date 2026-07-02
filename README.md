@@ -1,10 +1,18 @@
 # Screen Recapture Liveness Detector
 
 * **Author**: Daksh Arora
-* **Core Model**: ResNet101 (CNN Classifier)
-* **Status**: Production Ready (91.0% Validation Accuracy)
+* **Core Model**: ResNet-18 (CNN Classifier)
+* **Status**: Production Ready (96.3% Validation Accuracy)
 
 This repository contains a deep learning-based liveness detector to determine whether a given image is a **genuine, real-world photo** or a **recaptured photo of a screen** (to detect spoofing/fraud in mobile app uploads).
+
+---
+
+## Live Demonstration
+
+Here is a video demonstration of the live webcam liveness check in action:
+
+![Web App Video Demo](2026-07-02%2017-30-18.mp4)
 
 ---
 

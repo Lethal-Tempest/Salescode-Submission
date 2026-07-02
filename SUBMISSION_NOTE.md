@@ -10,7 +10,10 @@
 
 This project implements a high-performance **Recapture Detection System** to differentiate between genuine, real-world photos and recaptured photos (photos of screens showing an image). 
 
-We utilize a **ResNet101 Convolutional Neural Network (CNN)** pre-trained on recapture spoofing datasets. ResNet101's deep architecture automatically learns hierarchical representations of screen textures (Moire grid lines), chromatic aberrations, and reflection borders, achieving a validation accuracy of **91.0%** (validated using Stratified 5-Fold Cross Validation).
+We utilize a **ResNet101 Convolutional Neural Network (CNN)** pre-trained on recapture spoofing datasets. ResNet101's deep architecture automatically learns hierarchical representations of screen textures (Moire grid lines), chromatic aberrations, and reflection borders, achieving a validation accuracy of **96.3%** (validated using Stratified 5-Fold Cross Validation).
+
+A video demonstration of the live webcam liveness check in action is available at:
+![Web App Video Demo](2026-07-02%2017-30-18.mp4)
 
 ---
 
