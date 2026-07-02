@@ -44,16 +44,20 @@ The content is organized as follows:
 .gitignore
 .repomix/bundles.json
 2026-07-02 17-30-18.mp4
-app.py
-predict.py
+backend/app.py
+backend/predict.py
+backend/requirements.txt
+frontend/index.html
 README.md
-requirements.txt
 SUBMISSION_NOTE.md
-templates/index.html
 </directory_structure>
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path=".gitattributes">
+*.joblib filter=lfs diff=lfs merge=lfs -text
+</file>
 
 <file path=".repomix/bundles.json">
 {
@@ -61,7 +65,7 @@ This section contains the contents of the repository's files.
     "salescode-399": {
       "name": "salescode",
       "created": "2026-07-02T12:08:19.098Z",
-      "lastUsed": "2026-07-02T12:08:28.524Z",
+      "lastUsed": "2026-07-02T12:10:55.637Z",
       "tags": [],
       "files": [
         ""
@@ -71,17 +75,202 @@ This section contains the contents of the repository's files.
 }
 </file>
 
-<file path=".gitattributes">
-*.joblib filter=lfs diff=lfs merge=lfs -text
+<file path="backend/app.py">
+import os
+import sys
+import base64
+import io
+from pathlib import Path
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from PIL import Image
+
+import torch
+import torchvision
+from torchvision import transforms
+
+app = Flask(__name__)
+CORS(app) # Enable CORS for frontend domain requests
+
+# Device initialization with robust Blackwell architecture test
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU"
+
+if device.type == 'cuda':
+    try:
+        # Force kernel execution to check sm_120 compatibility
+        (torch.zeros(1).to(device) + 1).cpu()
+        print(f"PyTorch using device: {device} ({device_name})")
+    except Exception as e:
+        print(f"CUDA initialization failed ({e}). Falling back to CPU.")
+        device = torch.device('cpu')
+        device_name = "CPU (CUDA Incompatible)"
+
+# Load ResNet101 model globally on startup (search backend/ or parent/ or model/)
+resnet_model_path = Path(__file__).resolve().parent / 'final_model.pth'
+if not resnet_model_path.exists():
+    resnet_model_path = Path(__file__).resolve().parent.parent / 'final_model.pth'
+if not resnet_model_path.exists():
+    resnet_model_path = Path(__file__).resolve().parent / 'model' / 'final_model.pth'
+if not resnet_model_path.exists():
+    raise RuntimeError(f"ResNet101 model weights not found at: {resnet_model_path}")
+print(f"Loading ResNet101 model from: {resnet_model_path}")
+
+resnet_model = torchvision.models.resnet101()
+resnet_model.fc = torch.nn.Linear(2048, 3)
+resnet_model.load_state_dict(torch.load(str(resnet_model_path), map_location=device))
+resnet_model.to(device)
+resnet_model.eval()
+
+# ResNet preprocessing transforms
+resnet_transforms = transforms.Compose([
+    transforms.Resize(256),
+    transforms.CenterCrop(224),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+])
+
+@app.route('/')
+def index():
+    return "SalesCode Moire Recapture Detection API is running!"
+
+@app.route('/predict', methods=['POST'])
+def predict():
+    try:
+        data = request.get_json()
+        if not data or 'image' not in data:
+            return jsonify({'error': 'No image data provided'}), 400
+            
+        # Parse base64 image data
+        image_data_b64 = data['image']
+        if ',' in image_data_b64:
+            # Strip header if present
+            image_data_b64 = image_data_b64.split(',')[1]
+            
+        image_bytes = base64.b64decode(image_data_b64)
+        image_file = io.BytesIO(image_bytes)
+        
+        # Load image as PIL
+        pil_image = Image.open(image_file).convert('RGB')
+        tensor = resnet_transforms(pil_image).unsqueeze(0).to(device)
+        
+        with torch.no_grad():
+            logits = resnet_model(tensor)
+            probs = torch.softmax(logits, dim=1).cpu().numpy()[0]
+            
+        # Class 2 is Screen Recapture (Spoof)
+        prob = float(probs[2])
+        active_device = f"CUDA ({device_name})" if device.type == 'cuda' else "CPU"
+        
+        return jsonify({
+            'probability': float(prob),
+            'device': active_device
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)
 </file>
 
-<file path="requirements.txt">
-opencv-python
-scikit-learn
-scikit-image
+<file path="backend/predict.py">
+import sys
+import os
+from pathlib import Path
+
+# Suppress PyTorch/CUDA and other logging to stdout for clean output
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+import warnings
+warnings.filterwarnings('ignore')
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: python predict.py <path_to_image>")
+        sys.exit(1)
+        
+    image_path = sys.argv[1]
+    
+    if not os.path.exists(image_path):
+        print(f"Error: File {image_path} does not exist.")
+        sys.exit(1)
+        
+    # Lazy imports to minimize CLI startup overhead
+    try:
+        import torch
+        import torchvision
+        from torchvision import transforms
+        from PIL import Image
+    except ImportError:
+        print("Error: PyTorch, torchvision, and Pillow are required to run this script.")
+        sys.exit(1)
+        
+    # Device initialization with robust Blackwell architecture check
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    if device.type == 'cuda':
+        try:
+            # Force kernel execution to check sm_120 compatibility
+            (torch.zeros(1).to(device) + 1).cpu()
+        except Exception:
+            device = torch.device('cpu')
+            
+    # Load ResNet101 model weights
+    resnet_model_path = Path(__file__).resolve().parent / 'final_model.pth'
+    if not resnet_model_path.exists():
+        resnet_model_path = Path(__file__).resolve().parent.parent / 'final_model.pth'
+    if not resnet_model_path.exists():
+        resnet_model_path = Path(__file__).resolve().parent / 'model' / 'final_model.pth'
+    if not resnet_model_path.exists():
+        print(f"Error: Model weights not found at: {resnet_model_path}")
+        sys.exit(1)
+        
+    try:
+        model = torchvision.models.resnet101()
+        model.fc = torch.nn.Linear(2048, 3)
+        model.load_state_dict(torch.load(str(resnet_model_path), map_location=device))
+        model.to(device)
+        model.eval()
+    except Exception as e:
+        print(f"Error loading model: {e}")
+        sys.exit(1)
+        
+    # Preprocessing pipeline
+    preprocess = transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+    
+    try:
+        img = Image.open(image_path).convert('RGB')
+        tensor = preprocess(img).unsqueeze(0).to(device)
+        
+        with torch.no_grad():
+            logits = model(tensor)
+            probs = torch.softmax(logits, dim=1).cpu().numpy()[0]
+            
+        # Class 2 is Screen Recapture (Spoof)
+        prob = float(probs[2])
+        print(f"{prob:.2f}")
+    except Exception as e:
+        print(f"Error running inference: {e}")
+        sys.exit(1)
+
+if __name__ == '__main__':
+    main()
 </file>
 
-<file path="templates/index.html">
+<file path="backend/requirements.txt">
+torch
+torchvision
+Pillow
+flask
+flask-cors
+gunicorn
+</file>
+
+<file path="frontend/index.html">
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -393,6 +582,15 @@ scikit-image
             }
         }
 
+        // Resolves backend address dynamically based on environment
+        function getBackendUrl() {
+            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                return 'http://127.0.0.1:5000';
+            }
+            // Replace with your actual Render service URL for production
+            return 'https://salescode-submission-backend.onrender.com';
+        }
+
         function captureFrame() {
             const ctx = canvas.getContext('2d');
             
@@ -408,8 +606,9 @@ scikit-image
             
             // Send to server
             const startTime = performance.now();
+            const backendUrl = getBackendUrl();
             
-            fetch('/predict', {
+            fetch(`${backendUrl}/predict`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -603,186 +802,6 @@ cython_debug/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
-</file>
-
-<file path="app.py">
-import os
-import sys
-import base64
-import io
-from pathlib import Path
-from flask import Flask, request, jsonify, render_template
-from PIL import Image
-
-import torch
-import torchvision
-from torchvision import transforms
-
-app = Flask(__name__)
-
-# Device initialization with robust Blackwell architecture test
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-device_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU"
-
-if device.type == 'cuda':
-    try:
-        # Force kernel execution to check sm_120 compatibility
-        (torch.zeros(1).to(device) + 1).cpu()
-        print(f"PyTorch using device: {device} ({device_name})")
-    except Exception as e:
-        print(f"CUDA initialization failed ({e}). Falling back to CPU.")
-        device = torch.device('cpu')
-        device_name = "CPU (CUDA Incompatible)"
-
-# Load ResNet101 model globally on startup
-resnet_model_path = Path(__file__).resolve().parent / 'final_model.pth'
-if not resnet_model_path.exists():
-    resnet_model_path = Path(__file__).resolve().parent / 'model' / 'final_model.pth'
-if not resnet_model_path.exists():
-    raise RuntimeError(f"ResNet101 model weights not found at: {resnet_model_path}")
-print(f"Loading ResNet101 model from: {resnet_model_path}")
-
-resnet_model = torchvision.models.resnet101()
-resnet_model.fc = torch.nn.Linear(2048, 3)
-resnet_model.load_state_dict(torch.load(str(resnet_model_path), map_location=device))
-resnet_model.to(device)
-resnet_model.eval()
-
-# ResNet preprocessing transforms
-resnet_transforms = transforms.Compose([
-    transforms.Resize(256),
-    transforms.CenterCrop(224),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-])
-
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-@app.route('/predict', methods=['POST'])
-def predict():
-    try:
-        data = request.get_json()
-        if not data or 'image' not in data:
-            return jsonify({'error': 'No image data provided'}), 400
-            
-        # Parse base64 image data
-        image_data_b64 = data['image']
-        if ',' in image_data_b64:
-            # Strip header if present
-            image_data_b64 = image_data_b64.split(',')[1]
-            
-        image_bytes = base64.b64decode(image_data_b64)
-        image_file = io.BytesIO(image_bytes)
-        
-        # Load image as PIL
-        pil_image = Image.open(image_file).convert('RGB')
-        tensor = resnet_transforms(pil_image).unsqueeze(0).to(device)
-        
-        with torch.no_grad():
-            logits = resnet_model(tensor)
-            probs = torch.softmax(logits, dim=1).cpu().numpy()[0]
-            
-        # Class 2 is Screen Recapture (Spoof)
-        prob = float(probs[2])
-        active_device = f"CUDA ({device_name})" if device.type == 'cuda' else "CPU"
-        
-        return jsonify({
-            'probability': float(prob),
-            'device': active_device
-        })
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
-</file>
-
-<file path="predict.py">
-import sys
-import os
-from pathlib import Path
-
-# Suppress PyTorch/CUDA and other logging to stdout for clean output
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-import warnings
-warnings.filterwarnings('ignore')
-
-def main():
-    if len(sys.argv) < 2:
-        print("Usage: python predict.py <path_to_image>")
-        sys.exit(1)
-        
-    image_path = sys.argv[1]
-    
-    if not os.path.exists(image_path):
-        print(f"Error: File {image_path} does not exist.")
-        sys.exit(1)
-        
-    # Lazy imports to minimize CLI startup overhead
-    try:
-        import torch
-        import torchvision
-        from torchvision import transforms
-        from PIL import Image
-    except ImportError:
-        print("Error: PyTorch, torchvision, and Pillow are required to run this script.")
-        sys.exit(1)
-        
-    # Device initialization with robust Blackwell architecture check
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    if device.type == 'cuda':
-        try:
-            # Force kernel execution to check sm_120 compatibility
-            (torch.zeros(1).to(device) + 1).cpu()
-        except Exception:
-            device = torch.device('cpu')
-            
-    # Load ResNet101 model weights
-    resnet_model_path = Path(__file__).resolve().parent / 'final_model.pth'
-    if not resnet_model_path.exists():
-        resnet_model_path = Path(__file__).resolve().parent / 'model' / 'final_model.pth'
-    if not resnet_model_path.exists():
-        print(f"Error: Model weights not found at: {resnet_model_path}")
-        sys.exit(1)
-        
-    try:
-        model = torchvision.models.resnet101()
-        model.fc = torch.nn.Linear(2048, 3)
-        model.load_state_dict(torch.load(str(resnet_model_path), map_location=device))
-        model.to(device)
-        model.eval()
-    except Exception as e:
-        print(f"Error loading model: {e}")
-        sys.exit(1)
-        
-    # Preprocessing pipeline
-    preprocess = transforms.Compose([
-        transforms.Resize(256),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
-    
-    try:
-        img = Image.open(image_path).convert('RGB')
-        tensor = preprocess(img).unsqueeze(0).to(device)
-        
-        with torch.no_grad():
-            logits = model(tensor)
-            probs = torch.softmax(logits, dim=1).cpu().numpy()[0]
-            
-        # Class 2 is Screen Recapture (Spoof)
-        prob = float(probs[2])
-        print(f"{prob:.2f}")
-    except Exception as e:
-        print(f"Error running inference: {e}")
-        sys.exit(1)
-
-if __name__ == '__main__':
-    main()
 </file>
 
 <file path="README.md">

@@ -4,7 +4,7 @@ __pycache__/
 *$py.class
 data/
 model/
-*.pth
+
 # C extensions
 *.so
 
