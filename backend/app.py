@@ -42,7 +42,7 @@ def preprocess_image(pil_img):
 
 @app.route('/')
 def index():
-    return "SalesCode Moire Recapture Detection API is running!"
+    return "Spam Investigator API is running! Made by Daksh Arora"
 
 @app.route('/predict', methods=['POST'])
 def predict():
